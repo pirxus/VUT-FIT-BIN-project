@@ -4,13 +4,14 @@ import pickle
 from net import NpNet, softmax
 
 class Agent:
-    def __init__(self, net_tuple=None) -> None:
+    def __init__(self, agent_id=0, net_tuple=None) -> None:
         if net_tuple is not None:
             self.net = NpNet(*net_tuple)
         else:
             self.net = NpNet()
         self.fitness: float = 0
         self.fitness_prev: float = 0
+        self.agent_id = agent_id
 
     def backup_and_reset_fitness(self):
         self.fitness_prev = self.fitness
@@ -22,7 +23,7 @@ class Agent:
 
     @staticmethod
     def create_agent_pool(num_agents, net_tuple=None):
-        return [ Agent(net_tuple) for _ in range(num_agents) ]
+        return [ Agent(k, net_tuple) for k in range(num_agents) ]
 
     def forward(self, x, p=False):
         prediction = self.net.forward(x)
@@ -91,14 +92,17 @@ class Agent:
         self.update_weights(params)
 
 class AgentPool:
-    def __init__(self, num_agents, net_tuple=None) -> None:
+    def __init__(self, num_agents, net_tuple=None, task='cartpole', save_dir='./agents/') -> None:
         self.pool = Agent.create_agent_pool(num_agents, net_tuple)
         self.population_size = num_agents
         self.best_fitness: float = 0
         self.generation = 0
         self.net_tuple = net_tuple
+        self.next_id = num_agents
+        self.task = task
+        self.save_dir = save_dir
 
-    def evolve(self, mutation_rate=0.05, print_stats=False):
+    def evolve(self, mutation_rate=0.05, print_stats=False, crossover_type='default'):
         """ Produce a new generation of agents
 
         This method wraps up the current generataion's simulation,
@@ -118,28 +122,33 @@ class AgentPool:
             print("Printing top five best agents")
 
             for agent in self.pool[:5]:
-            #    print(f"ID: {agent.id},\tfitness: {agent.fitness:.2f},\t",
-            #            f"score: {agent.eaten_prev}")
-                print(f"fitness: {agent.fitness:.2f}")
+                print(f"ID: {agent.agent_id},\tfitness: {agent.fitness:.3f},\t")
 
             fitness_array = np.ndarray((len(self.pool),))
             for i in range(fitness_array.size):
                 fitness_array[i] = self.pool[i].fitness
 
-            print("\nAverage fitness:", round(np.mean(fitness_array), 2), "\n")
+            print("\nMean fitness:", round(np.mean(fitness_array), 3), "\n")
+            print("\nMedian fitness:", round(np.median(fitness_array), 3), "\n")
 
 
         new_population = []
-        #new_population.append(self.pool[0]) # use the best individual
-        new_population.append(self.pool[0])
+        new_population.append(self.pool[0]) # use the elite
         new_population.append(self.pool[1])
-        #parents = self.pool[:self.population_size // 10]
-        parents = self.pool[:self.population_size // 5]
+        # select a random number of parents
+        num_parents = np.random.randint(self.population_size // 10, self.population_size // 5)
+        parents = self.pool[:num_parents]
         while len(new_population) < self.population_size:
 
             p1, p2 = self.roulette_selection(parents, selection_size=2)
-            ch1, ch2 = self.crossover_separate(p1, p2)
-            #ch1, ch2 = self.crossover(p1, p2, points=2)
+            if crossover_type == 'separate':
+                ch1, ch2 = self.crossover_separate(p1, p2)
+            elif crossover_type == 'uniform':
+                ch1, ch2 = self.crossover_uniform(p1, p2, p=0.8)
+            elif crossover_type == 'blx':
+                ch1, ch2 = self.crossover_blxa(p1, p2, alpha=0.5)
+            else:
+                ch1, ch2 = self.crossover(p1, p2, points=1)
 
             ch1.mutate(p=mutation_rate)
             ch2.mutate(p=mutation_rate)
@@ -147,6 +156,7 @@ class AgentPool:
             new_population.extend([ch1, ch2])
 
         new_population.sort(key=lambda x: x.fitness, reverse=True)
+        self.backup_best_agent(output_dir=self.save_dir, gen_interval=1)
 
         for individual in new_population:
             individual.backup_and_reset_fitness()
@@ -177,6 +187,49 @@ class AgentPool:
             selected.append(agent_pool[0])
 
         return selected
+
+    def crossover_uniform(self, p1: Agent, p2: Agent, p=0.8):
+        ch1 = p1.serialize_weights()
+        ch2 = p2.serialize_weights()
+
+        cross = np.random.random(ch1.size) < p
+
+        out1 = ~cross * ch1 + cross * ch2
+        out2 = ~cross * ch2 + cross * ch1
+
+
+        # create new agents
+        a1 = Agent(self.next_id, net_tuple=self.net_tuple)
+        a2 = Agent(self.next_id + 1, net_tuple=self.net_tuple)
+        self.next_id += 2
+
+        # set the network parameters for each agent
+        a1.update_weights(out1)
+        a2.update_weights(out2)
+
+        return a1, a2
+
+    def crossover_blxa(self, p1: Agent, p2: Agent, alpha=0.5):
+        ch1 = p1.serialize_weights()
+        ch2 = p2.serialize_weights()
+
+        dist = np.abs(np.subtract(ch1, ch2))
+        out1 = np.random.uniform(low=np.minimum(ch1, ch2) - (alpha * dist),
+                high=np.maximum(ch1, ch2) + (alpha * dist), size=ch1.size)
+        out2 = np.random.uniform(low=np.minimum(ch1, ch2) - (alpha * dist),
+                high=np.maximum(ch1, ch2) + (alpha * dist), size=ch1.size)
+
+
+        # create new agents
+        a1 = Agent(self.next_id, net_tuple=self.net_tuple)
+        a2 = Agent(self.next_id + 1, net_tuple=self.net_tuple)
+        self.next_id += 2
+
+        # set the network parameters for each agent
+        a1.update_weights(out1)
+        a2.update_weights(out2)
+
+        return a1, a2
 
     def crossover_separate(self, p1: Agent, p2: Agent):
         """ Perform parent crossover and produce offsprings
@@ -219,8 +272,9 @@ class AgentPool:
         a2 = Agent(self.last_id + 2)
         self.last_id += 2
         """
-        a1 = Agent(net_tuple=self.net_tuple)
-        a2 = Agent(net_tuple=self.net_tuple)
+        a1 = Agent(self.next_id, net_tuple=self.net_tuple)
+        a2 = Agent(self.next_id + 1, net_tuple=self.net_tuple)
+        self.next_id += 2
 
         out1 = np.concatenate(out1)
         out2 = np.concatenate(out2)
@@ -242,9 +296,9 @@ class AgentPool:
         """
 
         ch1 = p1.serialize_weights()
-        ch2 = p1.serialize_weights()
+        ch2 = p2.serialize_weights()
         out1 = np.ndarray(ch1.size)
-        out2 = np.ndarray(ch1.size)
+        out2 = np.ndarray(ch2.size)
 
         # generate the crossover points
         co_points = [ch1.size]
@@ -272,8 +326,9 @@ class AgentPool:
             prev = point
 
         # create new agents
-        a1 = Agent(net_tuple=self.net_tuple)
-        a2 = Agent(net_tuple=self.net_tuple)
+        a1 = Agent(self.next_id, net_tuple=self.net_tuple)
+        a2 = Agent(self.next_id + 1, net_tuple=self.net_tuple)
+        self.next_id += 2
 
         # set the network parameters for each agent
         a1.update_weights(out1)
@@ -281,24 +336,30 @@ class AgentPool:
 
         return a1, a2
 
-    def backup_best_agent(self, output_dir='./'):
+    def backup_best_agent(self, output_dir='./agents/', gen_interval=1):
         """ Backup the weights of the best snake in the current generation """
+
+        if self.generation % gen_interval is not 0:
+            return
 
         # get the best performing agent
         best_agent = sorted(self.pool, key= lambda x: x.fitness, reverse=True)[0]
 
-        # backup the agent
-        if best_agent.fitness == self.best_fitness:
+        # save the agent
+        if output_dir:
+            # if needed create the destination path for the file..
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
-            # save the agent
-            if output_dir:
-                # if needed create the destination path for the file..
-                if not os.path.exists(output_dir):
-                    os.makedirs(output_dir)
-
-                # serialize the agent's weights and write the file..
-                weights = best_agent.serialize_weights()
-                # TODO: name
-                with open(output_dir + '/' + "best_agent_name", 'wb') as f:
-                    pickle.dump(weights, file=f)
+            # serialize the agent's weights and write the file..
+            weights = {'id': best_agent.agent_id,
+                    'weights': best_agent.serialize_weights(),
+                    'fitness': best_agent.fitness,
+                    'net_shape': self.net_tuple,
+                    'task': self.task,
+                    'gen': self.generation}
+            with open(output_dir + '/' +
+                    f"task:{self.task}_gen:{self.generation}_id:{best_agent.agent_id}_fit:{best_agent.fitness:.2f}.pkl",
+                    'wb') as f:
+                pickle.dump(weights, file=f)
 

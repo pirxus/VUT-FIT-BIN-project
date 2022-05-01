@@ -41,18 +41,18 @@ class NpNet:
         self.out_dim = out_dim
 
         # init the network weights and biases. The chosen architecture is [8, 6, 6, 4]
-        self.w1 = np.random.randn(self.hidden_dim_1, self.input_dim) * (2 / self.input_dim)
-        self.w2 = np.random.randn(self.hidden_dim_2, self.hidden_dim_1) * (2 / self.hidden_dim_1)
-        self.w3 = np.random.randn(self.out_dim, self.hidden_dim_2) * (1 / self.hidden_dim_2)
+        self.w1 = np.random.randn(self.hidden_dim_1, self.input_dim) * np.sqrt((2 / self.input_dim))
+        self.w2 = np.random.randn(self.hidden_dim_2, self.hidden_dim_1) * np.sqrt((2 / self.hidden_dim_1))
+        self.w3 = np.random.randn(self.out_dim, self.hidden_dim_2) * np.sqrt((1 / self.hidden_dim_2))
 
         if zero_bias:
             self.b1 = np.zeros(self.hidden_dim_1)
             self.b2 = np.zeros(self.hidden_dim_2)
             self.b3 = np.zeros(self.out_dim)
         else:
-            self.b1 = np.random.randn(self.hidden_dim_1) * (2 / self.input_dim)
-            self.b2 = np.random.randn(self.hidden_dim_2) * (2 / self.hidden_dim_1)
-            self.b3 = np.random.randn(self.out_dim) * (1 / self.hidden_dim_2)
+            self.b1 = np.random.randn(self.hidden_dim_1) * np.sqrt((2 / self.input_dim))
+            self.b2 = np.random.randn(self.hidden_dim_2) * np.sqrt((2 / self.hidden_dim_1))
+            self.b3 = np.random.randn(self.out_dim) * np.sqrt((1 / self.hidden_dim_2))
 
 
     def forward(self, x, output_only=True):
