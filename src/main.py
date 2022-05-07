@@ -18,8 +18,6 @@ PROC = 4
 task = 'ant'
 
 
-# TODO: replay
-
 @ray.remote
 def eval_agent_pool(task, agent_pool):
     if task == 'cartpole': env = gym.make("CartPole-v1") # works, 4 4 2 2

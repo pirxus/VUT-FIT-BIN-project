@@ -157,6 +157,7 @@ class AgentPool:
 
         new_population.sort(key=lambda x: x.fitness, reverse=True)
         self.backup_best_agent(output_dir=self.save_dir, gen_interval=1)
+        self.generate_report(output_dir=self.save_dir)
 
         for individual in new_population:
             individual.backup_and_reset_fitness()
@@ -335,6 +336,19 @@ class AgentPool:
         a2.update_weights(out2)
 
         return a1, a2
+
+
+    def generate_report(self, output_dir='./agents/', fname='stats.csv'):
+        """ Write the stats about the current generation into a file """
+
+        with open(os.path.join(output_dir, fname), 'a') as f:
+            fitness = []
+            for agent in self.pool:
+                fitness.append(str(agent.fitness))
+
+            f.write(';'.join(fitness) + "\n")
+
+
 
     def backup_best_agent(self, output_dir='./agents/', gen_interval=1):
         """ Backup the weights of the best snake in the current generation """
