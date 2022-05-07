@@ -1,22 +1,14 @@
-import torch
 import pickle
 import sys
 import itertools
 import numpy as np
 import gym
-import multiprocessing as mp
 from copy import deepcopy
 import ray
 import argparse as ap
+from config import *
 
 from agent import Agent, AgentPool
-
-POPULATION_SIZE = 200
-MP = True
-PROC = 4
-#task = 'cartpole'
-task = 'ant'
-
 
 @ray.remote
 def eval_agent_pool(task, agent_pool):
@@ -33,7 +25,7 @@ def eval_agent_pool(task, agent_pool):
 
         for k in range(num_iterations):
 
-            for _ in range(700):
+            for _ in range(MAX_ITER):
 
                 p = True if task == 'ant' else False
                 action = agent.forward(observation, p=p)
@@ -41,7 +33,7 @@ def eval_agent_pool(task, agent_pool):
                     pass
                 #action = np.random.choice(range(4), 1, p=pred).item()
                 observation, reward, done, info = env.step(action)
-                total_reward += reward ** 3
+                total_reward += reward
 
                 if done:
                     break
@@ -51,22 +43,22 @@ def eval_agent_pool(task, agent_pool):
 
     return agent_pool
 
-def train(task, save_dir):
+def train(task, save_dir, n_proc):
+    ray.init(_temp_dir='/tmp/ray/')
 
     # create a pool of agents
     if task == 'cartpole':
         env = gym.make("CartPole-v1") # works, 4 4 2 2
-        net_tuple = (4, 4, 2, 2)
+        net_tuple = CARTPOLE_NET
     elif task == 'acrobot':
         env = gym.make("Acrobot-v1")
-        net_tuple = (6, 6, 4, 3)
-
+        net_tuple = ACROBOT_NET
     elif task == 'ant':
         env = gym.make("BipedalWalker-v3")
-        net_tuple = (24, 24, 16, 4)
+        net_tuple = ANT_NET
     elif task == 'lander':
         env = gym.make("LunarLander-v2")
-        net_tuple = (8, 36, 24, 4)
+        net_tuple = LANDER_NET
     else:
         print(f"Error, '{task}' is not a valid task specification. Exitting...")
         sys.exit(1)
@@ -74,13 +66,13 @@ def train(task, save_dir):
     agent_pool = AgentPool(POPULATION_SIZE, net_tuple, task, save_dir)
 
 
-    for gen in range(2000):
+    for gen in range(MAX_GENERATIONS):
         if MP:
-            n = POPULATION_SIZE // PROC
+            n = POPULATION_SIZE // n_proc
             pool_of_pools = [ agent_pool.pool[i:i + n] for i in range(0, POPULATION_SIZE, n) ]
             ret_pools = ray.get([ eval_agent_pool.remote(task, pool) for pool in pool_of_pools ])
             agent_pool.pool = list(itertools.chain.from_iterable(ret_pools))
-            agent_pool.evolve(mutation_rate=0.05, print_stats=True, crossover_type='uniform')
+            agent_pool.evolve(mutation_rate=0.07, print_stats=True, crossover_type='uniform')
 
         else:
             for i, agent in enumerate(agent_pool.pool):
@@ -149,7 +141,7 @@ def replay(agent_file):
     total_reward = 0
 
     observation = env.reset()
-    for _ in range(700):
+    for _ in range(MAX_ITER):
         env.render()
 
         p = True if task == 'ant' else False
@@ -168,10 +160,11 @@ if __name__ == '__main__':
     parser.add_argument('--task', type=str, required=False, default='cartpole', help='Specify the training task: {cartpole, ant, lander}.')
     parser.add_argument('--agent_path', type=str, required=False, default=None, help='Specify the path to the agnent file for visualization.')
     parser.add_argument('--save_dir', type=str, required=False, default='./agents/', help='Specify the destination directory for saving the best agents.')
+    parser.add_argument('--np', type=int, required=False, default=4, help='Specify the number of processes for parallelization.')
     args = parser.parse_args()
 
     if args.mode == 'train':
-        train(args.task, args.save_dir)
+        train(args.task, args.save_dir, args.np)
     elif args.mode == 'replay':
         replay(args.agent_path)
     else:

@@ -144,7 +144,7 @@ class AgentPool:
             if crossover_type == 'separate':
                 ch1, ch2 = self.crossover_separate(p1, p2)
             elif crossover_type == 'uniform':
-                ch1, ch2 = self.crossover_uniform(p1, p2, p=0.8)
+                ch1, ch2 = self.crossover_uniform(p1, p2, p=0.6)
             elif crossover_type == 'blx':
                 ch1, ch2 = self.crossover_blxa(p1, p2, alpha=0.5)
             else:
@@ -197,7 +197,6 @@ class AgentPool:
 
         out1 = ~cross * ch1 + cross * ch2
         out2 = ~cross * ch2 + cross * ch1
-
 
         # create new agents
         a1 = Agent(self.next_id, net_tuple=self.net_tuple)
@@ -353,7 +352,7 @@ class AgentPool:
     def backup_best_agent(self, output_dir='./agents/', gen_interval=1):
         """ Backup the weights of the best snake in the current generation """
 
-        if self.generation % gen_interval is not 0:
+        if self.generation % gen_interval != 0:
             return
 
         # get the best performing agent

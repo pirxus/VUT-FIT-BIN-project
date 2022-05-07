@@ -1,0 +1,10 @@
+POPULATION_SIZE = 200
+MP = True
+MAX_ITER = 1000
+MAX_GENERATIONS = 3000
+
+# network shapes
+CARTPOLE_NET  = (4, 4, 2, 2)
+ANT_NET  = (24, 16, 12, 4)
+LANDER_NET  = (8, 36, 24, 4)
+ACROBOT_NET  = (6, 6, 4, 3)
