@@ -43,7 +43,7 @@ def eval_agent_pool(task, agent_pool):
 
     return agent_pool
 
-def train(task, save_dir, n_proc):
+def train(task, save_dir, n_proc, mutation_rate=0.05, crossover='uniform'):
     ray.init(_temp_dir='/tmp/ray/')
 
     # create a pool of agents
@@ -65,14 +65,13 @@ def train(task, save_dir, n_proc):
 
     agent_pool = AgentPool(POPULATION_SIZE, net_tuple, task, save_dir)
 
-
     for gen in range(MAX_GENERATIONS):
         if MP:
             n = POPULATION_SIZE // n_proc
             pool_of_pools = [ agent_pool.pool[i:i + n] for i in range(0, POPULATION_SIZE, n) ]
             ret_pools = ray.get([ eval_agent_pool.remote(task, pool) for pool in pool_of_pools ])
             agent_pool.pool = list(itertools.chain.from_iterable(ret_pools))
-            agent_pool.evolve(mutation_rate=0.07, print_stats=True, crossover_type='uniform')
+            agent_pool.evolve(mutation_rate=mutation_rate,print_stats=True, crossover_type=crossover)
 
         else:
             for i, agent in enumerate(agent_pool.pool):
@@ -160,11 +159,17 @@ if __name__ == '__main__':
     parser.add_argument('--task', type=str, required=False, default='cartpole', help='Specify the training task: {cartpole, ant, lander}.')
     parser.add_argument('--agent_path', type=str, required=False, default=None, help='Specify the path to the agnent file for visualization.')
     parser.add_argument('--save_dir', type=str, required=False, default='./agents/', help='Specify the destination directory for saving the best agents.')
+    parser.add_argument('--mutation_rate', type=float, required=False, default=0.05, help='Specify the mutation rate.')
+    parser.add_argument('--crossover', type=str, required=False, default='uniform', help='Specify the crossover type.')
     parser.add_argument('--np', type=int, required=False, default=4, help='Specify the number of processes for parallelization.')
     args = parser.parse_args()
 
+    # print the information about the experiment
+    print(args)
+
     if args.mode == 'train':
-        train(args.task, args.save_dir, args.np)
+        train(args.task, args.save_dir, args.np,
+                mutation_rate=args.mutation_rate, crossover=args.crossover)
     elif args.mode == 'replay':
         replay(args.agent_path)
     else:
