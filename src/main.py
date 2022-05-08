@@ -1,9 +1,17 @@
+"""@package main
+
+Author: Simon Sedlacek
+Email: xsedla1h@stud.fit.vutbr.cz
+
+This is the main module of the program. Please, see the README.md file for
+instructions.
+
+"""
+
 import pickle
 import sys
 import itertools
-import numpy as np
 import gym
-from copy import deepcopy
 import ray
 import argparse as ap
 from config import *
@@ -12,6 +20,8 @@ from agent import Agent, AgentPool
 
 @ray.remote
 def eval_agent_pool(task, agent_pool):
+    """Ray remote function, evaulating its supplied agent pool"""
+
     if task == 'cartpole': env = gym.make("CartPole-v1") # works, 4 4 2 2
     elif task == 'acrobot': env = gym.make("Acrobot-v1")
     elif task == 'ant': env = gym.make("BipedalWalker-v3")
@@ -29,9 +39,7 @@ def eval_agent_pool(task, agent_pool):
 
                 p = True if task == 'ant' else False
                 action = agent.forward(observation, p=p)
-                if i == 0:
-                    pass
-                #action = np.random.choice(range(4), 1, p=pred).item()
+
                 observation, reward, done, info = env.step(action)
                 total_reward += reward
 
@@ -43,7 +51,11 @@ def eval_agent_pool(task, agent_pool):
 
     return agent_pool
 
-def train(task, save_dir, n_proc, mutation_rate=0.05, crossover='uniform'):
+def train(task='cartpole', save_dir='./agents', n_proc=4, mutation_rate=0.05, crossover='uniform',
+        population_size=200, max_generations=1000, crossover_rate=0.6):
+    """ Main program branch for training the population """
+
+    # init ray due to some problems at metacentrum
     ray.init(_temp_dir='/tmp/ray/')
 
     # create a pool of agents
@@ -63,59 +75,19 @@ def train(task, save_dir, n_proc, mutation_rate=0.05, crossover='uniform'):
         print(f"Error, '{task}' is not a valid task specification. Exitting...")
         sys.exit(1)
 
-    agent_pool = AgentPool(POPULATION_SIZE, net_tuple, task, save_dir)
+    agent_pool = AgentPool(population_size, net_tuple, task, save_dir)
 
-    for gen in range(MAX_GENERATIONS):
-        if MP:
-            n = POPULATION_SIZE // n_proc
-            pool_of_pools = [ agent_pool.pool[i:i + n] for i in range(0, POPULATION_SIZE, n) ]
-            ret_pools = ray.get([ eval_agent_pool.remote(task, pool) for pool in pool_of_pools ])
-            agent_pool.pool = list(itertools.chain.from_iterable(ret_pools))
-            agent_pool.evolve(mutation_rate=mutation_rate,print_stats=True, crossover_type=crossover)
+    for gen in range(max_generations):
+        n = population_size // n_proc
+        pool_of_pools = [ agent_pool.pool[i:i + n] for i in range(0, population_size, n) ]
 
-        else:
-            for i, agent in enumerate(agent_pool.pool):
-                observation = env.reset()
+        # send out the split up agent pool to the remote workers
+        ret_pools = ray.get([ eval_agent_pool.remote(task, pool) for pool in pool_of_pools ])
+        agent_pool.pool = list(itertools.chain.from_iterable(ret_pools))
 
-                total_reward = 0
-                num_iterations = 1
-
-                for k in range(num_iterations):
-
-                    for j in range(500):
-                        if i == 0 and k == 0 and (gen + 1) % 10 == 0:
-                            env.render()
-                            pass
-
-                        #action = env.action_space.sample() # your agent here (this takes random actions)
-                        pred = agent.forward(observation, p=True)
-                        if i == 0:
-                            pass
-                        #action = np.random.choice(range(4), 1, p=pred).item()
-                        action = pred
-                        observation, reward, done, info = env.step(action)
-
-                        """
-                        if reward == 200:
-                            total_reward += 2 * reward
-                        else:
-                            total_reward += reward
-                            """
-                        total_reward += reward
-
-                        if done:
-                            break
-
-                # average the reward
-                agent.fitness = total_reward / num_iterations
-
-
-            # select the parents
-            agent_pool.evolve(mutation_rate=0.1, print_stats=True)
-
-            # generate the new population
-            # mutation
-            # again!!!
+        # once all the agents are evaluated, create the new generation
+        agent_pool.evolve(mutation_rate=mutation_rate, print_stats=True,
+                crossover_type=crossover, crossover_rate=crossover_rate)
 
     env.close()
 
@@ -161,6 +133,9 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, required=False, default='./agents/', help='Specify the destination directory for saving the best agents.')
     parser.add_argument('--mutation_rate', type=float, required=False, default=0.05, help='Specify the mutation rate.')
     parser.add_argument('--crossover', type=str, required=False, default='uniform', help='Specify the crossover type.')
+    parser.add_argument('--crossover_rate', type=float, required=False, default=0.6, help='Specify the crossover rate for uniform crossover.')
+    parser.add_argument('--population_size', type=int, required=False, default=200, help='Specify the population size.')
+    parser.add_argument('--max_generations', type=int, required=False, default=1000, help='Specify the maximum number of generations.')
     parser.add_argument('--np', type=int, required=False, default=4, help='Specify the number of processes for parallelization.')
     args = parser.parse_args()
 
@@ -168,8 +143,9 @@ if __name__ == '__main__':
     print(args)
 
     if args.mode == 'train':
-        train(args.task, args.save_dir, args.np,
-                mutation_rate=args.mutation_rate, crossover=args.crossover)
+        train(task=args.task, save_dir=args.save_dir, n_proc=args.np,
+                mutation_rate=args.mutation_rate, crossover=args.crossover,
+                population_size=args.population_size, max_generations=args.max_generations, crossover_rate=args.crossover_rate)
     elif args.mode == 'replay':
         replay(args.agent_path)
     else:

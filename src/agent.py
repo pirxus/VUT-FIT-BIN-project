@@ -1,9 +1,19 @@
+"""@package agent
+
+Author: Simon Sedlacek
+Email: xsedla1h@stud.fit.vutbr.cz
+
+In this module, the classes for Agent and AgentPool are implemented.
+"""
+
 import numpy as np
 import os
 import pickle
 from net import NpNet, softmax
+from config import *
 
 class Agent:
+    """ This class represents one agent in the population """
     def __init__(self, agent_id=0, net_tuple=None) -> None:
         if net_tuple is not None:
             self.net = NpNet(*net_tuple)
@@ -102,7 +112,8 @@ class AgentPool:
         self.task = task
         self.save_dir = save_dir
 
-    def evolve(self, mutation_rate=0.05, print_stats=False, crossover_type='default'):
+    def evolve(self, mutation_rate=0.05, print_stats=False, crossover_type='default',
+            crossover_rate=0.6):
         """ Produce a new generation of agents
 
         This method wraps up the current generataion's simulation,
@@ -134,9 +145,13 @@ class AgentPool:
 
         new_population = []
         new_population.append(self.pool[0]) # use the elite
-        new_population.append(self.pool[1])
+
+        if self.population_size > 50:
+            new_population.append(self.pool[1])
+
         # select a random number of parents
-        num_parents = np.random.randint(self.population_size // 10, self.population_size // 5)
+        num_parents = np.random.randint(self.population_size // 10, self.population_size // 5) if self.population_size > 50 else self.population_size
+
         parents = self.pool[:num_parents]
         while len(new_population) < self.population_size:
 
@@ -144,7 +159,7 @@ class AgentPool:
             if crossover_type == 'separate':
                 ch1, ch2 = self.crossover_separate(p1, p2)
             elif crossover_type == 'uniform':
-                ch1, ch2 = self.crossover_uniform(p1, p2, p=0.6)
+                ch1, ch2 = self.crossover_uniform(p1, p2, p=crossover_rate)
             elif crossover_type == 'blx':
                 ch1, ch2 = self.crossover_blxa(p1, p2, alpha=0.5)
             else:
@@ -156,7 +171,7 @@ class AgentPool:
             new_population.extend([ch1, ch2])
 
         new_population.sort(key=lambda x: x.fitness, reverse=True)
-        self.backup_best_agent(output_dir=self.save_dir, gen_interval=1)
+        self.backup_best_agent(output_dir=self.save_dir, gen_interval=BCKP_INTERVAL)
         self.generate_report(output_dir=self.save_dir)
 
         for individual in new_population:
@@ -172,22 +187,11 @@ class AgentPool:
 
         """
 
-        selected = []
         roulette = sum([ candidate.fitness for candidate in agent_pool ])
-        for _ in range(selection_size):
-            pick = np.random.uniform(0, roulette)
-            current = 0
-            for candidate in agent_pool:
-                current += candidate.fitness
-                if current > pick:
-                    selected.append(candidate)
-                    break
-
-        # for safety 
-        while len(selected) < selection_size:
-            selected.append(agent_pool[0])
-
+        sel_prob = [ candidate.fitness / roulette for candidate in agent_pool ]
+        selected = np.random.choice(agent_pool, size=(selection_size, ), replace=False, p=sel_prob)
         return selected
+
 
     def crossover_uniform(self, p1: Agent, p2: Agent, p=0.8):
         ch1 = p1.serialize_weights()
@@ -339,6 +343,10 @@ class AgentPool:
 
     def generate_report(self, output_dir='./agents/', fname='stats.csv'):
         """ Write the stats about the current generation into a file """
+
+        # if needed create the destination path for the file..
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
         with open(os.path.join(output_dir, fname), 'a') as f:
             fitness = []

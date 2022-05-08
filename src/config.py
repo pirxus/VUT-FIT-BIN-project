@@ -1,7 +1,14 @@
-POPULATION_SIZE = 200
-MP = True
+"""@package config
+
+Author: Simon Sedlacek
+Email: xsedla1h@stud.fit.vutbr.cz
+
+A config module, defining some constants..
+
+"""
+
 MAX_ITER = 1000
-MAX_GENERATIONS = 3000
+BCKP_INTERVAL = 10
 
 # network shapes
 CARTPOLE_NET  = (4, 4, 2, 2)

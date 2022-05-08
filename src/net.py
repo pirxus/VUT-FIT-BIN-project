@@ -1,27 +1,13 @@
+"""@package net
+
+Author: Simon Sedlacek
+Email: xsedla1h@stud.fit.vutbr.cz
+
+In this module, the class for the agent's neural network is implemented.
+
+"""
+
 import numpy as np
-import torch
-import torch.nn as nn
-
-class Net(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.in_dim = 8 # 8 observation inputs
-        self.out_dim = 4 # 4 action outputs
-
-        self.relu = nn.ReLU()
-        self.softmax = nn.Softmax()
-        self.fc1 = nn.Linear(self.in_dim, 6)
-        self.fc2 = nn.Linear(6, 6)
-        self.fc3 = nn.Linear(6, 4)
-
-    def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.relu(out)
-        out = self.fc3(out)
-        return self.softmax(out)
-
 
 def relu(x: np.ndarray) -> np.ndarray:
     return x * (x > 0)

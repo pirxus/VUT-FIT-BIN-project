@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 agents/
+cartpole_eval
+*.tar.gz
+runs
+
 
 # C extensions
 *.so
